@@ -105,6 +105,11 @@ module.exports = class SplitChunksPlugin {
 		this.options = SplitChunksPlugin.normalizeOptions(options);
 	}
 
+	/**
+	 * 格式化选项
+	 * @param {Object} options 
+	 * @returns {Object}
+	 */
 	static normalizeOptions(options = {}) {
 		return {
 			chunksFilter: SplitChunksPlugin.normalizeChunksFilter(
@@ -130,30 +135,50 @@ module.exports = class SplitChunksPlugin {
 		};
 	}
 
+	/**
+	 * 获得 getName
+	 * @param {Object} args 参数
+	 * @param {String} args.name chunk name
+	 * @param {String} args.automaticNameDelimiter 连接符
+	 * @param {String} args.automaticNamePrefix 前缀
+	 * @returns {Function} 返回getName
+	 */
 	static normalizeName({ name, automaticNameDelimiter, automaticNamePrefix }) {
 		if (name === true) {
 			/** @type {WeakMap<Chunk[], Record<string, string>>} */
 			const cache = new WeakMap();
+
 			const fn = (module, chunks, cacheGroup) => {
 				let cacheEntry = cache.get(chunks);
+				
+				// set/get cache
 				if (cacheEntry === undefined) {
 					cacheEntry = {};
 					cache.set(chunks, cacheEntry);
 				} else if (cacheGroup in cacheEntry) {
 					return cacheEntry[cacheGroup];
 				}
+
+				// 
 				const names = chunks.map(c => c.name);
 				if (!names.every(Boolean)) {
 					cacheEntry[cacheGroup] = undefined;
 					return;
 				}
+
+				// 排序
 				names.sort();
+
+
+				// 前缀
 				const prefix =
 					typeof automaticNamePrefix === "string"
 						? automaticNamePrefix
 						: cacheGroup;
 				const namePrefix = prefix ? prefix + automaticNameDelimiter : "";
+
 				let name = namePrefix + names.join(automaticNameDelimiter);
+
 				// Filenames and paths can't be too long otherwise an
 				// ENAMETOOLONG error is raised. If the generated name if too
 				// long, it is truncated and a hash is appended. The limit has
@@ -164,10 +189,12 @@ module.exports = class SplitChunksPlugin {
 						name.slice(0, 100) + automaticNameDelimiter + hashFilename(name);
 				}
 				cacheEntry[cacheGroup] = name;
+
 				return name;
 			};
 			return fn;
 		}
+		
 		if (typeof name === "string") {
 			const fn = () => {
 				return name;
@@ -177,6 +204,11 @@ module.exports = class SplitChunksPlugin {
 		if (typeof name === "function") return name;
 	}
 
+	/**
+	 * 获得 chunks filter
+	 * @param {String|Function} chunks 
+	 * @returns {Function} 返回chunks filter
+	 */
 	static normalizeChunksFilter(chunks) {
 		if (chunks === "initial") {
 			return INITIAL_CHUNK_FILTER;
@@ -190,6 +222,12 @@ module.exports = class SplitChunksPlugin {
 		if (typeof chunks === "function") return chunks;
 	}
 
+	/**
+	 * 
+	 * @param {*} param0 
+	 * @param {*} param1 
+	 * @returns {Object}
+	 */
 	static normalizeFallbackCacheGroup(
 		{
 			minSize = undefined,
@@ -210,6 +248,14 @@ module.exports = class SplitChunksPlugin {
 		};
 	}
 
+	/**
+	 * 标准化 cacheGroups 选项
+	 * @param {Object} options 选项
+	 * @param {Object} cacheGroups
+	 * @param {String} name chunk name
+	 * @param {String} automaticNameDelimiter name delimiter
+	 * @returns {Function} 返回一个用于创建normalize CacheGroups 的函数
+	 */
 	static normalizeCacheGroups({ cacheGroups, name, automaticNameDelimiter }) {
 		if (typeof cacheGroups === "function") {
 			// TODO webpack 5 remove this
@@ -280,6 +326,12 @@ module.exports = class SplitChunksPlugin {
 		return fn;
 	}
 
+	/**
+	 * 检查module是否匹配
+	 * @param {String|RegExp|Function} test 
+	 * @param {Module} module 
+	 * @returns {Boolean}
+	 */
 	static checkTest(test, module) {
 		if (test === undefined) return true;
 		if (typeof test === "function") {
@@ -318,32 +370,58 @@ module.exports = class SplitChunksPlugin {
 	}
 
 	/**
+	 * apply
 	 * @param {Compiler} compiler webpack compiler
 	 * @returns {void}
 	 */
 	apply(compiler) {
 		compiler.hooks.thisCompilation.tap("SplitChunksPlugin", compilation => {
 			let alreadyOptimized = false;
+			
 			compilation.hooks.unseal.tap("SplitChunksPlugin", () => {
 				alreadyOptimized = false;
 			});
+
 			compilation.hooks.optimizeChunksAdvanced.tap(
 				"SplitChunksPlugin",
 				chunks => {
 					if (alreadyOptimized) return;
 					alreadyOptimized = true;
-					// Give each selected chunk an index (to create strings from chunks)
-					const indexMap = new Map();
-					let index = 1;
-					for (const chunk of chunks) {
-						indexMap.set(chunk, index++);
-					}
+
+					/**
+					 * 获得chunk index list
+					 * @param {Chunk[]} chunks
+					 * @returns {String} 返回由chunk index组成的字符串 "1,2,3,..."
+					 */
 					const getKey = chunks => {
 						return Array.from(chunks, c => indexMap.get(c))
 							.sort()
 							.join();
 					};
-					/** @type {Map<string, Set<Chunk>>} */
+
+					// 
+					// 生成 chunk index map
+					// 
+					const indexMap = new Map();
+					let index = 1;
+					for (const chunk of chunks) {
+						indexMap.set(chunk, index++);
+					}
+					
+					/** 
+					 * vendor-chunk set
+					 * 
+					 * 0 chunkA: module1, module2
+					 * 1 chunkB: moudle3
+					 * 2 chunkC: module1
+					 * 
+					 * vendor-chunk set:
+					 * "0,2": chunkA, chunkC
+					 * "1": chunkB
+					 * "2": chunkC
+					 * 
+					 * @type {Map<string, Set<Chunk>>} 
+					 */
 					const chunkSetsInGraph = new Map();
 					for (const module of compilation.modules) {
 						const chunksKey = getKey(module.chunksIterable);
@@ -355,7 +433,11 @@ module.exports = class SplitChunksPlugin {
 					// group these set of chunks by count
 					// to allow to check less sets via isSubset
 					// (only smaller sets can be subset)
-					/** @type {Map<number, Array<Set<Chunk>>>} */
+					/**
+					 * count-chunk set
+					 * key: chunks count, value: chunks
+					 * @type {Map<number, Array<Set<Chunk>>>} 
+					 */
 					const chunkSetsByCount = new Map();
 					for (const chunksSet of chunkSetsInGraph.values()) {
 						const count = chunksSet.size;
@@ -368,11 +450,21 @@ module.exports = class SplitChunksPlugin {
 					}
 
 					// Create a list of possible combinations
-					const combinationsCache = new Map(); // Map<string, Set<Chunk>[]>
+					/**
+					 * 保存保存
+					 * @type {Map<string, Set<Chunk>[]>}
+					 */
+					const combinationsCache = new Map(); // 
 
+					/**
+					 * 
+					 * @param {String} key vendor-chunk key "1,2"
+					 * @returns {Set<Chunk>[]}
+					 */
 					const getCombinations = key => {
 						const chunksSet = chunkSetsInGraph.get(key);
 						var array = [chunksSet];
+
 						if (chunksSet.size > 1) {
 							for (const [count, setArray] of chunkSetsByCount) {
 								// "equal" is not needed because they would have been merge in the first step
@@ -385,6 +477,7 @@ module.exports = class SplitChunksPlugin {
 								}
 							}
 						}
+
 						return array;
 					};
 
@@ -398,7 +491,10 @@ module.exports = class SplitChunksPlugin {
 					 * @typedef {function(Chunk): boolean} ChunkFilterFunction
 					 */
 
-					/** @type {WeakMap<Set<Chunk>, WeakMap<ChunkFilterFunction, SelectedChunksResult>>} */
+					/** 
+					 * 
+					 * @type {WeakMap<Set<Chunk>, WeakMap<ChunkFilterFunction, SelectedChunksResult>>} 
+					 */
 					const selectedChunksCacheByChunksSet = new WeakMap();
 
 					/**
@@ -507,15 +603,19 @@ module.exports = class SplitChunksPlugin {
 						}
 					};
 
-					// Walk through all modules
+					// Walk through all modules - 遍历所有模块, 
 					for (const module of compilation.modules) {
-						// Get cache group
+						//
+						// 1. Get cache group
+						//
 						let cacheGroups = this.options.getCacheGroups(module);
 						if (!Array.isArray(cacheGroups) || cacheGroups.length === 0) {
 							continue;
 						}
 
-						// Prepare some values
+						//
+						// 2. 
+						//
 						const chunksKey = getKey(module.chunksIterable);
 						let combs = combinationsCache.get(chunksKey);
 						if (combs === undefined) {

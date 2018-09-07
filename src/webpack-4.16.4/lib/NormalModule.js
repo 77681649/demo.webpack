@@ -113,6 +113,10 @@ class NormalModule extends Module {
 		return contextify(options.context, this.userRequest);
 	}
 
+	/**
+	 * 获得模块的绝对路径
+	 * @returns {String}
+	 */
 	nameForCondition() {
 		const resource = this.matchResource || this.resource;
 		const idx = resource.indexOf("?");
