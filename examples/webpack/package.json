@@ -1,0 +1,6 @@
+{
+  "name":"webpack.demo",
+  "scripts":{
+   "start":"node bin/cli.js" 
+  }
+}

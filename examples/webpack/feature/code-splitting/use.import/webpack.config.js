@@ -1,5 +1,5 @@
 //
-// entry: 使用SplitChunkPlugin
+// entry: 使用import()实现异步加载
 //
 const path = require('path');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
@@ -11,10 +11,10 @@ module.exports = {
 		home: './home',
 		list: './list',
 	},
-	// devtool: 'cheap-source-map',
+	devtool: 'cheap-source-map',
 	output: {
 		path: path.join(__dirname, './dist'),
-		filename: '[name].[hash:8].js',
+		filename: '[name].[hash:8].js'
 	},
 	mode: 'development',
 	plugins: [new CleanWebpackPlugin('./dist')],
