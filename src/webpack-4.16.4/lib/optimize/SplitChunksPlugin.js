@@ -33,6 +33,11 @@ const sortByIdentifier = (a, b) => {
 	return 0;
 };
 
+/**
+ * 计算请求数
+ * @param {Chunk} chunk 
+ * @returns {Number}
+ */
 const getRequests = chunk => {
 	let requests = 0;
 	for (const chunkGroup of chunk.groupsIterable) {
@@ -62,28 +67,39 @@ const isOverlap = (a, b) => {
 	return false;
 };
 
+/**
+ * 比较Entry
+ * @param {ChunkInfo} a
+ * @param {ChunkInfo} b
+ * @returns {Number}
+ */
 const compareEntries = (a, b) => {
 	// 1. by priority
 	const diffPriority = a.cacheGroup.priority - b.cacheGroup.priority;
 	if (diffPriority) return diffPriority;
+	
 	// 2. by number of chunks
 	const diffCount = a.chunks.size - b.chunks.size;
 	if (diffCount) return diffCount;
+	
 	// 3. by size reduction
 	const aSizeReduce = a.size * (a.chunks.size - 1);
 	const bSizeReduce = b.size * (b.chunks.size - 1);
 	const diffSizeReduce = aSizeReduce - bSizeReduce;
 	if (diffSizeReduce) return diffSizeReduce;
+	
 	// 4. by number of modules (to be able to compare by identifier)
 	const modulesA = a.modules;
 	const modulesB = b.modules;
 	const diff = modulesA.size - modulesB.size;
 	if (diff) return diff;
+	
 	// 5. by module identifiers
 	modulesA.sort();
 	modulesB.sort();
 	const aI = modulesA[Symbol.iterator]();
 	const bI = modulesB[Symbol.iterator]();
+	
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		const aItem = aI.next();
@@ -96,8 +112,25 @@ const compareEntries = (a, b) => {
 	}
 };
 
+/**
+ * filter initial chunk 
+ * @param {*} chunk 
+ * @returns {Boolean}
+ */
 const INITIAL_CHUNK_FILTER = chunk => chunk.canBeInitial();
+
+/**
+ * filter async chunk
+ * @param {Chunk} chunk 
+ * @returns {Boolean}
+ */
 const ASYNC_CHUNK_FILTER = chunk => !chunk.canBeInitial();
+
+/**
+ * all
+ * @param {Chunk} chunk 
+ * @returns {Boolean} 
+ */
 const ALL_CHUNK_FILTER = chunk => true;
 
 module.exports = class SplitChunksPlugin {
@@ -389,7 +422,7 @@ module.exports = class SplitChunksPlugin {
 					alreadyOptimized = true;
 
 					/**
-					 * 获得chunk index list
+					 * 获得chunks对应的key ( key由index生成 )
 					 * @param {Chunk[]} chunks
 					 * @returns {String} 返回由chunk index组成的字符串 "1,2,3,..."
 					 */
@@ -399,9 +432,13 @@ module.exports = class SplitChunksPlugin {
 							.join();
 					};
 
-					// 
-					// 生成 chunk index map
-					// 
+					/**
+					 * 1. 生成 chunk index map
+					 * {
+					 * 		chunk: 0
+					 * 		chunk: 1
+					 * }
+					 */
 					const indexMap = new Map();
 					let index = 1;
 					for (const chunk of chunks) {
@@ -409,20 +446,28 @@ module.exports = class SplitChunksPlugin {
 					}
 					
 					/** 
-					 * vendor-chunk set
+					 * vendor-chunk map ( 表示chunk引用module的情况 )
 					 * 
+					 * @example
 					 * 0 chunkA: module1, module2
 					 * 1 chunkB: moudle3
 					 * 2 chunkC: module1
 					 * 
-					 * vendor-chunk set:
-					 * "0,2": chunkA, chunkC
-					 * "1": chunkB
-					 * "2": chunkC
+					 * "0,2" - 表示chunkA,chunkC模块了同一模块
+					 * vendor-chunk set: 
+					 * {
+					 * 	"0,2": [chunkA, chunkC]
+					 * 	"1": [chunkB]
+					 * 	"2": [chunkC]
+					 * }
 					 * 
 					 * @type {Map<string, Set<Chunk>>} 
 					 */
 					const chunkSetsInGraph = new Map();
+
+					//
+					// 2. 遍历 modules - 获得 vendor-chunk map
+					//
 					for (const module of compilation.modules) {
 						const chunksKey = getKey(module.chunksIterable);
 						if (!chunkSetsInGraph.has(chunksKey)) {
@@ -430,18 +475,29 @@ module.exports = class SplitChunksPlugin {
 						}
 					}
 
-					// group these set of chunks by count
-					// to allow to check less sets via isSubset
-					// (only smaller sets can be subset)
 					/**
-					 * count-chunk set
-					 * key: chunks count, value: chunks
+					 * count-chunk set ( 按vendor-chunk的尺寸分组 )
+					 * 
+					 * @example
+					 * 尺寸为1的vendor-chunk
+					 * 
+					 * chunkSetsByCount = {
+					 * 		1: [ [ChunkA], [ChunkB], [ChunkC] ],
+					 * 		2: [ [ChunkA, ChunkB], [ChunkB,ChunkC]]
+					 * 		.. 
+					 * }
+					 * 
 					 * @type {Map<number, Array<Set<Chunk>>>} 
 					 */
 					const chunkSetsByCount = new Map();
+
+					//
+					// 3. 获得count-chunk set
+					//
 					for (const chunksSet of chunkSetsInGraph.values()) {
 						const count = chunksSet.size;
 						let array = chunkSetsByCount.get(count);
+						
 						if (array === undefined) {
 							array = [];
 							chunkSetsByCount.set(count, array);
@@ -449,26 +505,52 @@ module.exports = class SplitChunksPlugin {
 						array.push(chunksSet);
 					}
 
-					// Create a list of possible combinations
 					/**
-					 * 保存保存
+					 * combinations ( vendor-chunk 以及其他它的 sub chunks )
+					 * 
+					 * @example
+					 * {
+					 * 	"0,1,2": [
+					 * 		[ChunkA, ChunkB, ChunkC],
+					 * 		[ChunkA, ChunkB],
+					 * 		[ChunkA],
+					 * 		[ChunkB]
+					 * 	]
+					 * }
+					 * 
 					 * @type {Map<string, Set<Chunk>[]>}
 					 */
-					const combinationsCache = new Map(); // 
+					const combinationsCache = new Map(); 
 
 					/**
+					 * 获得combinations
 					 * 
+					 * @example
+					 * [
+					 * 		[chunkA, chunkB, chunkC]
+					 * 		[chunkA, chunkB],
+					 * 		[chunkA],
+					 * 		[chunkB]
+					 * ]
+					 *  
 					 * @param {String} key vendor-chunk key "1,2"
-					 * @returns {Set<Chunk>[]}
+					 * @returns {Set<Chunk>[]} 
 					 */
 					const getCombinations = key => {
+						// vendor-chunk chunks
 						const chunksSet = chunkSetsInGraph.get(key);
+
+						// combinations
 						var array = [chunksSet];
 
+						// vendor-chunk 公用模块, 找出vendor-chunk 子片段
 						if (chunksSet.size > 1) {
+							
 							for (const [count, setArray] of chunkSetsByCount) {
 								// "equal" is not needed because they would have been merge in the first step
+								// 尺寸比vendor-chunk小的
 								if (count < chunksSet.size) {
+									// 遍历找出vendor-chunk subset
 									for (const set of setArray) {
 										if (isSubset(chunksSet, set)) {
 											array.push(set);
@@ -482,6 +564,7 @@ module.exports = class SplitChunksPlugin {
 					};
 
 					/**
+					 * 
 					 * @typedef {Object} SelectedChunksResult
 					 * @property {Chunk[]} chunks the list of chunks
 					 * @property {string} key a key of the list
@@ -492,12 +575,15 @@ module.exports = class SplitChunksPlugin {
 					 */
 
 					/** 
-					 * 
+					 * chunks
+					 * 	-> filter - {selecgedChunks, key}
+					 * 	...
 					 * @type {WeakMap<Set<Chunk>, WeakMap<ChunkFilterFunction, SelectedChunksResult>>} 
 					 */
 					const selectedChunksCacheByChunksSet = new WeakMap();
 
 					/**
+					 * 返回选择的chunks的列表和key
 					 * get list and key by applying the filter function to the list
 					 * It is cached for performance reasons
 					 * @param {Set<Chunk>} chunks list of chunks
@@ -505,25 +591,32 @@ module.exports = class SplitChunksPlugin {
 					 * @returns {SelectedChunksResult} list and key
 					 */
 					const getSelectedChunks = (chunks, chunkFilter) => {
+						// set/get cache
 						let entry = selectedChunksCacheByChunksSet.get(chunks);
 						if (entry === undefined) {
 							entry = new WeakMap();
 							selectedChunksCacheByChunksSet.set(chunks, entry);
 						}
+
 						/** @type {SelectedChunksResult} */
 						let entry2 = entry.get(chunkFilter);
+
 						if (entry2 === undefined) {
 							/** @type {Chunk[]} */
 							const selectedChunks = [];
+
 							for (const chunk of chunks) {
 								if (chunkFilter(chunk)) selectedChunks.push(chunk);
 							}
+
 							entry2 = {
 								chunks: selectedChunks,
 								key: getKey(selectedChunks)
 							};
 							entry.set(chunkFilter, entry2);
 						}
+
+						// return
 						return entry2;
 					};
 
@@ -540,10 +633,15 @@ module.exports = class SplitChunksPlugin {
 
 					// Map a list of chunks to a list of modules
 					// For the key the chunk "index" is used, the value is a SortableSet of modules
-					/** @type {Map<string, ChunksInfoItem>} */
+					
+					/** 
+					 * 记录最终的split chunk 信息
+					 * @type {Map<string, ChunksInfoItem>} 
+					 */
 					const chunksInfoMap = new Map();
 
 					/**
+					 * 创建split-chunk ( 或更新信息 )
 					 * @param {TODO} cacheGroup the current cache group
 					 * @param {Chunk[]} selectedChunks chunks selected for this module
 					 * @param {string} selectedChunksKey a key of selectedChunks
@@ -558,12 +656,14 @@ module.exports = class SplitChunksPlugin {
 					) => {
 						// Break if minimum number of chunks is not reached
 						if (selectedChunks.length < cacheGroup.minChunks) return;
+
 						// Determine name for split chunk
 						const name = cacheGroup.getName(
 							module,
 							selectedChunks,
 							cacheGroup.key
 						);
+
 						// Create key for maps
 						// When it has a name we use the name as key
 						// Elsewise we create the key from chunks and cache group key
@@ -571,30 +671,86 @@ module.exports = class SplitChunksPlugin {
 						const key =
 							(name && `name:${name}`) ||
 							`chunks:${selectedChunksKey} key:${cacheGroup.key}`;
+
 						// Add module to maps
 						let info = chunksInfoMap.get(key);
+
 						if (info === undefined) {
 							chunksInfoMap.set(
 								key,
 								(info = {
+									/**
+									 * 包含的 modules
+									 * 
+									 */
 									modules: new SortableSet(undefined, sortByIdentifier),
+
+									/**
+									 * cacheGroup
+									 */
 									cacheGroup,
+
+									/**
+									 * name
+									 */
 									name,
+
+									/**
+									 * the total size of module list
+									 */
 									size: 0,
+
+									/**
+									 * 包含的chunks
+									 * 
+									 * @example
+									 * [
+									 * 	"ChunkA","ChunkB", "ChunkC"
+									 * ]
+									 * 
+									 * @type {Set<Chunk>}
+									 */
 									chunks: new Set(),
+
+									/**
+									 * @type {Set<Chunk>}
+									 */
 									reuseableChunks: new Set(),
+
+									/**
+									 * 包含的vendor-chunk key
+									 * 
+									 * @example
+									 * [
+									 * 	"1",
+									 * 	"2,3",
+									 * 	"1,2,3"
+									 * ]
+									 * 
+									 * 
+									 * @type {Set<String>}
+									 */
 									chunksKeys: new Set()
 								})
 							);
 						} else {
+							// 根据优先级更新 cacheGroup
 							if (info.cacheGroup !== cacheGroup) {
 								if (info.cacheGroup.priority < cacheGroup.priority) {
 									info.cacheGroup = cacheGroup;
 								}
 							}
 						}
+
+						//
+						// 更新 model 信息
+						//
 						info.modules.add(module);
 						info.size += module.size();
+
+						//
+						// 更新 chunks 信息
+						//
 						if (!info.chunksKeys.has(selectedChunksKey)) {
 							info.chunksKeys.add(selectedChunksKey);
 							for (const chunk of selectedChunks) {
@@ -603,10 +759,12 @@ module.exports = class SplitChunksPlugin {
 						}
 					};
 
-					// Walk through all modules - 遍历所有模块, 
+					/**
+					 * 4. 遍历modules - 获得split-chunk
+					 */
 					for (const module of compilation.modules) {
 						//
-						// 1. Get cache group
+						// 4.1 获得module belong to cache group
 						//
 						let cacheGroups = this.options.getCacheGroups(module);
 						if (!Array.isArray(cacheGroups) || cacheGroups.length === 0) {
@@ -614,7 +772,7 @@ module.exports = class SplitChunksPlugin {
 						}
 
 						//
-						// 2. 
+						// 4.2 获得vendor-chunk combination
 						//
 						const chunksKey = getKey(module.chunksIterable);
 						let combs = combinationsCache.get(chunksKey);
@@ -623,7 +781,13 @@ module.exports = class SplitChunksPlugin {
 							combinationsCache.set(chunksKey, combs);
 						}
 
+						//
+						// 4.3 遍历cacheGroups
+						//
 						for (const cacheGroupSource of cacheGroups) {
+							//
+							// 4.3.1 创建Cache Group
+							//
 							const cacheGroup = {
 								key: cacheGroupSource.key,
 								priority: cacheGroupSource.priority || 0,
@@ -673,19 +837,30 @@ module.exports = class SplitChunksPlugin {
 										: this.options.automaticNameDelimiter,
 								reuseExistingChunk: cacheGroupSource.reuseExistingChunk
 							};
-							// For all combination of chunk selection
+
+							//
+							// 4.3.2 遍历combinations
+							//
 							for (const chunkCombination of combs) {
-								// Break if minimum number of chunks is not reached
+								//
+								// 筛选cache group
+								//
 								if (chunkCombination.size < cacheGroup.minChunks) continue;
-								// Select chunks by configuration
+
+								//
+								// 获得selected chunk
+								//
 								const {
-									chunks: selectedChunks,
-									key: selectedChunksKey
+									chunks: selectedChunks,		// selected chunks
+									key: selectedChunksKey		// selected vendor-chunk key
 								} = getSelectedChunks(
 									chunkCombination,
 									cacheGroup.chunksFilter
 								);
 
+								//
+								// 创建或更新split-chunk
+								//
 								addModuleToChunksInfoMap(
 									cacheGroup,
 									selectedChunks,
@@ -696,16 +871,27 @@ module.exports = class SplitChunksPlugin {
 						}
 					}
 
-					/** @type {Map<Chunk, {minSize: number, maxSize: number, automaticNameDelimiter: string}>} */
+					/** 
+					 * @type {Map<Chunk, {minSize: number, maxSize: number, automaticNameDelimiter: string}>} 
+					 * */
 					const maxSizeQueueMap = new Map();
 
+					/**
+					 * 5. 遍历split-chunk
+					 */
 					while (chunksInfoMap.size > 0) {
 						// Find best matching entry
 						let bestEntryKey;
 						let bestEntry;
+
+						//
+						// 5.1 遍历split-chunk 找出最适合的split-chunk 优先处理
+						//
 						for (const pair of chunksInfoMap) {
 							const key = pair[0];
 							const info = pair[1];
+
+							// size >= minSize
 							if (info.size >= info.cacheGroup.minSize) {
 								if (bestEntry === undefined) {
 									bestEntry = info;
@@ -720,14 +906,20 @@ module.exports = class SplitChunksPlugin {
 						// No suitable item left
 						if (bestEntry === undefined) break;
 
+						// 删除处理了的split-chunk
 						const item = bestEntry;
 						chunksInfoMap.delete(bestEntryKey);
 
+						// new chunk name
 						let chunkName = item.name;
+						
 						// Variable for the new chunk (lazy created)
 						/** @type {Chunk} */
 						let newChunk;
-						// When no chunk name, check if we can reuse a chunk instead of creating a new one
+
+						// 
+						// 5.2 When no chunk name, check if we can reuse a chunk instead of creating a new one
+						//
 						let isReused = false;
 						if (item.cacheGroup.reuseExistingChunk) {
 							outer: for (const chunk of item.chunks) {
@@ -754,8 +946,8 @@ module.exports = class SplitChunksPlugin {
 								isReused = true;
 							}
 						}
-						// Check if maxRequests condition can be fulfilled
 
+						// 跳过自身
 						const usedChunks = Array.from(item.chunks).filter(chunk => {
 							// skip if we address ourself
 							return (
@@ -766,6 +958,9 @@ module.exports = class SplitChunksPlugin {
 						// Skip when no chunk selected
 						if (usedChunks.length === 0) continue;
 
+						//
+						// 5.3 检查maxRequests是否满足条件
+						//
 						const chunkInLimit = usedChunks.filter(chunk => {
 							// respect max requests when not enforced
 							const maxRequests = chunk.isOnlyInitial()
@@ -776,6 +971,7 @@ module.exports = class SplitChunksPlugin {
 											item.cacheGroup.maxAsyncRequests
 									  )
 									: item.cacheGroup.maxAsyncRequests;
+
 							return !isFinite(maxRequests) || getRequests(chunk) < maxRequests;
 						});
 

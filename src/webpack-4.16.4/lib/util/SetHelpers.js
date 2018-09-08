@@ -31,6 +31,7 @@ const intersect = sets => {
 };
 
 /**
+ * 判断smallSet是否是bigSet的子片段
  * Checks if a set is the subset of another set
  * @param {Set<TODO>} bigSet a Set which contains the original elements to compare against
  * @param {Set<TODO>} smallSet the set whos elements might be contained inside of bigSet
@@ -38,9 +39,11 @@ const intersect = sets => {
  */
 const isSubset = (bigSet, smallSet) => {
 	if (bigSet.size < smallSet.size) return false;
+
 	for (const item of smallSet) {
 		if (!bigSet.has(item)) return false;
 	}
+
 	return true;
 };
 

@@ -11,7 +11,7 @@ module.exports = {
 		home: './home',
 		list: './list',
 	},
-	devtool: 'cheap-source-map',
+	// devtool: 'cheap-source-map',
 	output: {
 		path: path.join(__dirname, './dist'),
 		filename: '[name].[hash:8].js',
@@ -21,6 +21,19 @@ module.exports = {
 	optimization: {
 		splitChunks: {
 			chunks: 'all',
+			minSize: 0,
+			cacheGroups: {
+				vendors: {
+					test: /node_module/,
+					minChunks: 1,
+					name: 'vendor',
+				},
+				common: {
+					minChunks: 2,
+					name: 'common',
+				},
+				default: false,
+			},
 		},
 		runtimeChunk: {
 			name: 'manifest',
