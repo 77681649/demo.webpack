@@ -23,6 +23,7 @@
     "demo.webpack-chain": "file:webpack-chain",
     "ejs": "^2.6.1",
     "ejs-loader": "^0.3.1",
+    "express": "^4.16.3",
     "file-loader": "^2.0.0",
     "happypack": "^5.0.0",
     "html-webpack-plugin": "^3.2.0",
@@ -36,7 +37,9 @@
     "react": "^16.5.0",
     "react-dom": "^16.4.2",
     "style-loader": "^0.23.0",
+    "webpack-dev-middleware": "^3.3.0",
     "webpack-dev-server": "^3.1.8",
+    "webpack-hot-middleware": "^2.23.1",
     "webpack-node-externals": "^1.7.2"
   },
   "devDependencies": {
