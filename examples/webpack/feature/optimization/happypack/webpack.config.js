@@ -1,14 +1,10 @@
 /**
- * compile es6
- * 1. 使用babel-loader compile ES6 && JSX
- * 2. 使用splitChunk && runtimeChunk 拆分代码
- * 3. 使用babel-syntax-dynamic-import 动态加载
- * 4. 使用babel-plugin-transform-runtime 减少编译出的冗余代码
- * 5. 使用babel-polyfill polyfill API
+ * 使用happypack
  */
 const path = require('path');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const HappyPack = require('happypack');
 const Config = require('webpack-chain');
 
 const context = path.join(__dirname, 'src');
@@ -42,26 +38,11 @@ module.exports = config
     .end()
   .module
     .noParse([/react\.js$/,/react-dom\.js$/])
+    // 将es6 compile 托管给 happypack 实例: babel
     .rule('compile')
       .test(/\.jsx?$/)
       .exclude.add(/node_modules/).end()
-      .use('babel')
-        .loader('babel-loader')
-        .options({
-          presets: [
-            ["@babel/preset-env", { useBuiltIns: false } ],    // compile es6
-            "@babel/preset-react"   // compile jsx
-          ],
-          plugins:[
-            "@babel/plugin-syntax-dynamic-import",   // compile import()
-            [ "@babel/plugin-transform-runtime", {
-              regenerator:true
-            } ]        // reduce compiled code
-          ],
-          babelrc: false,
-          cacheDirectory: false
-        })
-        .end()
+      .use('happypack-laoder').loader('happypack/loader').options({id: 'babel'}).end()
       .end()
     .end()
   .optimization
@@ -91,5 +72,26 @@ module.exports = config
   .plugin('clean-webpack-plugin').use(CleanWebpackPlugin,[output]).end()
   .plugin('html-webpack-plugin').use(HtmlWebpackPlugin,[{
     template:'../index.html'
+  }]).end()
+  // 创建HappyPack实例
+  .plugin('babel-happypack').use(HappyPack,[{
+    id: 'babel',
+    loaders: [{
+      loader: 'babel-loader',
+      options:{
+        presets: [
+          ["@babel/preset-env", { useBuiltIns: false } ],    // compile es6
+          "@babel/preset-react"   // compile jsx
+        ],
+        plugins:[
+          "@babel/plugin-syntax-dynamic-import",   // compile import()
+          [ "@babel/plugin-transform-runtime", {
+            regenerator:true
+          } ]        // reduce compiled code
+        ],
+        babelrc: false,
+        cacheDirectory: false
+      }
+    }]
   }]).end()
   .toConfig();

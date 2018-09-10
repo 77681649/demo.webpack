@@ -5,6 +5,8 @@
  * 3. 使用babel-syntax-dynamic-import 动态加载
  * 4. 使用babel-plugin-transform-runtime 减少编译出的冗余代码
  * 5. 使用babel-polyfill polyfill API
+ * 6. 使用less/css/style-loader 编译less
+ * 7. 使用postcss-loader 使用postcss-loader
  */
 const path = require('path');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
@@ -42,7 +44,7 @@ module.exports = config
     .end()
   .module
     .noParse([/react\.js$/,/react-dom\.js$/])
-    .rule('compile')
+    .rule('compile-js')
       .test(/\.jsx?$/)
       .exclude.add(/node_modules/).end()
       .use('babel')
@@ -63,6 +65,16 @@ module.exports = config
         })
         .end()
       .end()
+    // compile-less
+    .rule('compile-less')
+      .test(/\.less/)
+      .use('style').loader('style-loader').end()
+      .use('css').loader('css-loader').end()
+      .use('less').loader('less-loader').end()
+      .end()
+    // compile-postcss
+      // .test([/\.less/, /\.css/])
+      // .
     .end()
   .optimization
     .splitChunks({

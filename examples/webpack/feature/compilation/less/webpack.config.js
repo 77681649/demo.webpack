@@ -5,10 +5,13 @@
  * 3. 使用babel-syntax-dynamic-import 动态加载
  * 4. 使用babel-plugin-transform-runtime 减少编译出的冗余代码
  * 5. 使用babel-polyfill polyfill API
+ * 6. 使用less/css/style-loader 编译less
+ * 7. 使用mini-css-extract-plugin 将css提取到单独的文件
  */
 const path = require('path');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const Config = require('webpack-chain');
 
 const context = path.join(__dirname, 'src');
@@ -42,7 +45,7 @@ module.exports = config
     .end()
   .module
     .noParse([/react\.js$/,/react-dom\.js$/])
-    .rule('compile')
+    .rule('compile-js')
       .test(/\.jsx?$/)
       .exclude.add(/node_modules/).end()
       .use('babel')
@@ -62,6 +65,13 @@ module.exports = config
           cacheDirectory: false
         })
         .end()
+      .end()
+    // compile-less
+    .rule('compile-less')
+      .test(/\.less/)
+      .use('extract-css').loader(MiniCssExtractPlugin.loader).options().end()
+      .use('css').loader('css-loader').end()
+      .use('less').loader('less-loader').end()
       .end()
     .end()
   .optimization
@@ -89,6 +99,15 @@ module.exports = config
     })
     .end()
   .plugin('clean-webpack-plugin').use(CleanWebpackPlugin,[output]).end()
+  // extract css
+  .plugin('mini-css-extract-plugin')
+    .use(MiniCssExtractPlugin,[
+      {
+        filename:"styles/[name].css",
+        chunkFilename:"styles/[id].css"
+      }
+    ])
+    .end()
   .plugin('html-webpack-plugin').use(HtmlWebpackPlugin,[{
     template:'../index.html'
   }]).end()

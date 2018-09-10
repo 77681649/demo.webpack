@@ -5,10 +5,12 @@
  * 3. 使用babel-syntax-dynamic-import 动态加载
  * 4. 使用babel-plugin-transform-runtime 减少编译出的冗余代码
  * 5. 使用babel-polyfill polyfill API
+ * 6. 使用less/css/style-loader 编译less
  */
 const path = require('path');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const nodeExternals = require('webpack-node-externals');
 const Config = require('webpack-chain');
 
 const context = path.join(__dirname, 'src');
@@ -19,18 +21,18 @@ const config = new Config();
 // prettier-ignore
 module.exports = config
   .context(context)
-  .entry('main')
-    // .add('@babel/polyfill')
-    .add('./index')
+  .entry('server')
+    .add('./server')
     .end()
   .devtool('source-map')
-  .devServer
-    .open(true)
-    .historyApiFallback(true)
-    .end()
+  .target('node')
+  .externals([nodeExternals({
+    modulesDir: '../../../../node_modules'
+  })])   // exclude node_modules
   .output
     .path(output)
     .chunkFilename('scripts/[name].async.js')
+    .libraryTarget('commonjs2')
     .end()
   .mode('development')
   .resolve
@@ -42,7 +44,7 @@ module.exports = config
     .end()
   .module
     .noParse([/react\.js$/,/react-dom\.js$/])
-    .rule('compile')
+    .rule('compile-js')
       .test(/\.jsx?$/)
       .exclude.add(/node_modules/).end()
       .use('babel')
@@ -63,33 +65,18 @@ module.exports = config
         })
         .end()
       .end()
-    .end()
-  .optimization
-    .splitChunks({
-      chunks: "all",
-      minSize: 0,
-      cacheGroups: {
-        // 将node_module 提取到 vendor
-        "vendors":{
-          name: 'vendor',
-          test: /node_module/,
-          minChunks: 1,
-          // priority: -10
-        },
-        "common": {
-          name: "common",
-          minChunks: 2,
-          // priority: -20
-        },
-        "default": false
-      }
-    })
-    .runtimeChunk({
-      name: 'scripts/runtime'
-    })
+    // ignore-style
+    .rule('ignore-style')
+      .test([/\.less/, /\.css/])
+      .use('ignore').loader('ignore-loader').end()
+      .end()
+    // ejs
+    .rule('ejs')
+      .test(/\.ejs/)
+      .use('ejs').loader('ejs-loader').end()
+      .end()
     .end()
   .plugin('clean-webpack-plugin').use(CleanWebpackPlugin,[output]).end()
-  .plugin('html-webpack-plugin').use(HtmlWebpackPlugin,[{
-    template:'../index.html'
-  }]).end()
   .toConfig();
+
+console.log(JSON.stringify(module.exports, null, 2));
