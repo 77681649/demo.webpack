@@ -19,7 +19,7 @@ module.exports = config
   .output
     .path(output)
     .library('react')
-    .libraryTarget('var')
+    .libraryTarget('commonjs2')
     .end()
   .mode('development')
   .plugin('clean-webpack-plugin').use(CleanWebpackPlugin,output).end()

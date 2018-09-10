@@ -19,7 +19,7 @@ module.exports = config
   .output
     .path(output)
     .library('react')
-    .libraryTarget('var')
+    .libraryTarget('amd')
     .end()
   .mode('development')
   .plugin('clean-webpack-plugin').use(CleanWebpackPlugin,output).end()
