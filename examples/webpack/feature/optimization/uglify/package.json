@@ -1,0 +1,9 @@
+{
+  "name": "webpack.demo",
+  "scripts": {
+    "start": "node bin/cli.js"
+  },
+  "dependencies": {
+    "uglify-js": "^3.4.9"
+  }
+}
